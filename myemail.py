@@ -1,34 +1,67 @@
-import smtplib, ssl
+from apiclient import errors
+from httplib2 import Http
+from email.mime.text import MIMEText
+import base64
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+import pdb
 
-smtp_server = "smtp.gmail.com"
-port = 587  # For starttls
-password = 'Imobile1'
-sender_email = "ideveloper003@gmail.com"
-receiver_email = "ideveloper003@gmail.com"
-reply_email = "help@miamiadschool.com"
-message = """\
-Subject: Hi there
-
-This message is sent from Python."""
+EMAIL_FROM = "it@miamiadschool.com"
+EMAIL_TO = "it@miamiadschool.com"
+EMAIL_SUBJECT = "Report: Error while uploading recordings"
+EMAIL_CONTENT = 'Hello, this is a test\nLyfepedia\nhttps://lyfepedia.com'
 
 class Email:
 
 	def __init__(self):
-		context = ssl.create_default_context()
+		SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+		SERVICE_ACCOUNT_FILE = './creds/google_secret.json'
 
-		# Try to log in to server and send email
+		credentials = service_account.Credentials.from_service_account_file(
+			SERVICE_ACCOUNT_FILE,
+			scopes=SCOPES,
+			subject=EMAIL_FROM)
+		# delegated_credentials = credentials.with_subject(EMAIL_FROM)
+		self.service = build('gmail', 'v1', credentials=credentials, cache_discovery=False)
+
+	def send_message(self, msg):
+		message = self.create_message(EMAIL_FROM, EMAIL_TO, EMAIL_SUBJECT, msg)
+		sent = self._send_message('me', message)
+
+	def create_message(self, sender, to, subject, message_text):
+		"""Create a message for an email.
+		Args:
+		sender: Email address of the sender.
+		to: Email address of the receiver.
+		subject: The subject of the email message.
+		message_text: The text of the email message.
+		Returns:
+		An object containing a base64url encoded email object.
+		"""
+		message = MIMEText(message_text)
+		message['to'] = to
+		message['cc'] = "ideveloper003@gmail.com"
+		message['from'] = sender
+		message['subject'] = subject
+		return {'raw': base64.urlsafe_b64encode(message.as_string().encode('utf-8')).decode("ascii")}
+
+	def _send_message(self, user_id, message):
+		"""Send an email message.
+		Args:
+		service: Authorized Gmail API service instance.
+		user_id: User's email address. The special value "me"
+		can be used to indicate the authenticated user.
+		message: Message to be sent.
+		Returns:
+		Sent Message.
+		"""
 		try:
-		    self.server = smtplib.SMTP(smtp_server,port)
-		    self.server.ehlo() # Can be omitted
-		    self.server.starttls(context=context) # Secure the connection
-		    self.server.ehlo() # Can be omitted
-		    self.server.login(sender_email, password)
-		    # TODO: Send email here
-		except Exception as e:
-		    # Print any error messages to stdout
-		    print(e)
-		finally:
-		    self.server.quit() 
+			message = self.service.users().messages().send(userId=user_id, body=message).execute()
+			print('Message Id: %s' % message['id'])
+			return message
+		except errors.HttpError as error:
+			print('An error occurred: %s' % error)
 
-	def send_email(self):
-		self.server.sendmail(reply_email, receiver_email, message)
+if __name__ == '__main__':
+	myemail = Email()
+	myemail.send_message('test1')

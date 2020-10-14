@@ -10,11 +10,16 @@ from clint.textui import progress
 from datetime import datetime, timedelta
 import jwt
 import argparse
-import threading
-import multiprocessing.pool as mpool
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, Table, Column, Text, BLOB, \
+					Integer, Text, String, MetaData, DateTime, JSON, select, Boolean
+from sqlalchemy.ext.declarative import declarative_base
 
 from logger import logger
-upload_lock = threading.Lock()
+from myemail import Email
+
+basedir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(os.path.join(basedir, '.env'))
 
 class Zoom():
 	userId = 'zoom@miamiadschool.com'
@@ -28,16 +33,63 @@ class Zoom():
 	# redirect_uri = 'https://secure-dashboard.revampcybersecurity.com//api/mine/zoom_callback'
 
 	downloaded_recordings = []
+	recording_data_to_insert = []
+	meeting_data_to_insert = []
+	failed_meetings = []
 	users = []
 	zoom_users = []
 	size_limit = 1024
 	page_size = 300
 
 	def __init__(self):
+		self.emailSender = Email()
 		self.session = requests.Session()
-		self.session.mount('https://', requests.adapters.HTTPAdapter(pool_connections=100000, max_retries=2))
+		self.session.mount('https://', requests.adapters.HTTPAdapter(pool_connections=10000000, max_retries=3))
 		self.generate_jwt_token()
+		self._setup_db()
 		# self.read_all_users()
+
+	def _setup_db(self):
+		Base = declarative_base()
+		metadata = MetaData()
+		engine = create_engine(os.environ.get('DATABASE_URL'))
+		self.connection = engine.connect()
+		metadata.bind = engine
+		metadata.clear()
+
+		self.upload_history = Table(
+			'recording_upload_history', 
+			metadata,
+			Column('id', Integer, primary_key=True),
+			Column('topic', String(512)),
+			Column('meeting_id', String(512)),
+			Column('meeting_uuid', String(512)),
+			# Column('meeting_link', String(512)),
+			Column('start_time', String(512)),
+			Column('file_name', String(512)),
+			# Column('file_type', String(128)),
+			Column('recording_link', String(512)),
+			Column('folder_link', String(512)),
+			Column('status', Boolean),
+			Column('run_at', String(256)),
+		)
+
+		self.upload_status = Table(
+			'meeting_upload_status', 
+			metadata,
+			Column('id', Integer, primary_key=True),
+			Column('topic', String(512)),
+			Column('meeting_id', String(512)),
+			Column('meeting_uuid', String(512)),
+			# Column('meeting_link', String(512)),
+			Column('start_time', String(512)),
+			Column('folder_link', String(512)),
+			Column('cnt_files', Integer),
+			Column('status', Boolean),
+			Column('is_deleted', Boolean),
+			Column('run_at', String(256)),
+		)
+		metadata.create_all()
 
 	def generate_jwt_token(self):
 		'''
@@ -180,7 +232,7 @@ class Zoom():
 	def find_drive_folder_id(self, cur_topic):
 		folder_id = None
 		for folder_link, topic in zip(self.ccs['Google Drive: Recordings'], self.ccs['Zoom Topic']):
-			if topic == cur_topic:
+			if topic.strip() == cur_topic.strip():
 				folder_id = os.path.basename(folder_link)
 				break
 
@@ -249,9 +301,130 @@ class Zoom():
 				except Exception as E:
 					logger.warning(str(E))
 
-		logger.info(f'--- Successfully cleared recordings {total_cleared}')			
+		logger.info(f'--- Successfully cleared recordings {total_cleared}')		
 
-	def delete_downloaded_recording(self, api):
+	def update_upload_history(self, meeting, file_name, file_type, folder_id, file_id, status=True):
+		_file_name = None
+		if file_name and file_type:
+			_file_name = f'{file_name}.{file_type}'
+		start_time = datetime.strptime(meeting['start_time'], '%Y-%m-%dT%H:%M:%SZ').strftime('%b %d %Y, %H:%M:%S')
+		recording_link = f'https://drive.google.com/file/d/{file_id}/view?usp=sharing'
+		folder_link = f'https://drive.google.com/drive/folders/{folder_id}'
+		self.recording_data_to_insert.append({
+			'topic': meeting['topic'],
+			'meeting_id': meeting['id'],
+			'start_time': start_time,
+			'file_name': _file_name,
+			'recording_link': recording_link,
+			'folder_link': folder_link,
+			'status': status,
+			'run_at': datetime.now().strftime('%m/%d/%Y %H:%M:%S')
+		})
+
+	def get_meeting_status(self, meeting):
+		status = False
+		if len(self.recording_data_to_insert) == meeting['recording_count']-1:
+			status = True
+		else:
+			status = False
+
+		return status
+
+	def update_db(self, meeting):
+		if self.recording_data_to_insert:
+			try:
+				self.connection.execute(self.upload_history.insert(), self.recording_data_to_insert)
+				is_deleted = self.delete_uploaded_meeting(meeting)
+				self.update_upload_status(meeting, is_deleted)
+			except Exception as E:
+				logger.warning(str(E))
+		else:
+			self.build_report_to_admin(meeting)
+
+	def build_report_to_admin(self, meeting):
+		status = self.get_meeting_status(meeting)
+		folder_link = None
+		start_time = None
+		for recording in self.recording_data_to_insert:
+			folder_link = recording['folder_link']
+			start_time = recording['start_time']
+		if not status:
+			logger.info(f'--- report error to admin {meeting["uuid"]}')
+			# should notify admin about it.
+			msg = f'Failed to download meeting recordings for topic {meeting["topic"]} on {start_time} \n Here is the cloud link https://zoom.us/recording/management/detail?meeting_id={meeting["uuid"]}'
+			if folder_link.endswith('None'):
+				# topic was changed, so cannot find out corresponding drive link in the sheet
+				msg += '\n It seems like that the topic was changed by host for some reason. Please have a look at the description for it in sheet and then correct it accordingly.'
+
+			self.emailSender.send_message(msg)
+
+	def delete_uploaded_meeting(self, meeting):
+		logger.info(f'--- delete meeting after uploading {meeting["uuid"]}')
+		status = self.get_meeting_status(meeting)
+
+		# should not delete meeting where any of recordings was not properly uploaded.
+		# focus on status
+		is_deleted = False
+		if status and len(self.recording_data_to_insert) == meeting['recording_count']-1:
+			try:
+				res = self.session.delete(f"{self.base_url}/meetings/{meeting['id']}/recordings?action=trash", headers=self.get_headers())
+				if res.status_code == 204:
+					is_deleted = True
+			except Exception as E:
+				logger.warning(str(E))
+
+		return is_deleted
+
+	def update_upload_status(self, meeting, is_deleted):
+		logger.info(f'--- update the meeting_upload_status table {meeting["uuid"]}')
+		cnt_files = 0
+		topic = meeting['topic']
+		start_time = None
+		run_at = datetime.now().strftime('%m/%d/%Y %H:%M:%S')
+		folder_link = None
+		meeting_id = meeting['id']
+		meeting_uuid = meeting['uuid']
+		for recording in self.recording_data_to_insert:
+			folder_link = recording['folder_link']
+			start_time = recording['start_time']
+			if recording['status']:
+				cnt_files += 1
+
+		status = self.get_meeting_status(meeting)
+		try:
+			# check if this meeting has already inserted or should update
+			res = self.connection.execute(f"SELECT id FROM upload_status WHERE meeting_id='{meeting_id}'")
+			items = [dict(r) for r in res]
+			self.meeting_data_to_insert = []
+			if len(items):
+				update_statement = self.upload_status.update().\
+					where(self.upload_status.c.uuid == meeting_uuid).\
+					values({
+						'topic': topic,
+						'is_deleted': is_deleted,
+						'cnt_files': cnt_files,
+						'folder_link': folder_link,
+						'status': status,
+						'run_at': run_at,
+					})
+				self.connection.execute(update_statement)
+			else:
+				self.meeting_data_to_insert.append({
+					'topic': topic,
+					'meeting_id': meeting_id,
+					'meeting_uuid': meeting_uuid,
+					'start_time': start_time,
+					'cnt_files': cnt_files,
+					'folder_link': folder_link,
+					'status': status,
+					'is_deleted': is_deleted,
+					'run_at': run_at
+				})
+				self.connection.execute(self.upload_status.insert(), self.meeting_data_to_insert)
+		except Exception as E:
+			logger(str(E))
+
+	def delete_recordings_after_download(self, api):
 		try:
 			self.session.post(f"{self.base_url}api?action=trash", headers=self.get_headers())
 		except Exception as E:
@@ -279,40 +452,33 @@ class Zoom():
 			logger.warning(str(E))
 
 	def validate_recordings_for_upload(self, meeting):
+		# self.validate_size_of_meeting(meeting, 1024*10) and 
 		return self.validate_size_of_meeting(meeting, 1024*10) and not self.is_processing_meeting(meeting) and meeting['topic'].startswith('Q4')
-
-	def download_recordings(self):
-		logger.info('---- Download from zoom cloud recordings and upload them to Google Drive')
-		# pool = mpool.ThreadPool(20)
-		# threads = []
-		for meeting in self.meetings:
-			if self.validate_recordings_for_upload(meeting):
-				# thread = pool.apply_async(self._upload_recording, args=(meeting,))
-				# threads.append(thread)
-				self._upload_recording(meeting)
-
-		# for thread in threads:
-		# 	thread.get()
 
 	def _upload_recording(self, meeting):
 		topic = meeting['topic']
+		start_date_time = datetime.strptime(meeting['start_time'], '%Y-%m-%dT%H:%M:%SZ').strftime('%b %d %Y')
+		file_name = None
+		file_type = None
+		folder_id = None
+		file_id = None
+		status = True
 		for recording in meeting['recording_files']:
-			if recording.get('file_size', 0) < 1024 or True:
+			# if recording.get('file_size', 0) < 1024*1024*11 or True:
 				vid = self.session.get(f"{recording['download_url']}?access_token={self.token.decode()}", stream=True)
-				try:
-					if vid.status_code == 200 and recording.get('recording_type') and recording.get('status', '') != 'processing':
+				if vid.status_code == 200 and recording.get('recording_type') != None and recording.get('status', '') != 'processing':
+					try:
 						recording_type = ' '.join([d.capitalize() for d in recording['recording_type'].split('_')])
 						file_type = recording["file_type"]
-						filename = f'{topic} {recording_type}'
+						file_name = f'{topic} {recording_type}'
 						parent_id = self.find_drive_folder_id(topic)
 						if parent_id:
 							course_number = topic.split('-')[1]
-							start_date_time = datetime.strptime(recording['recording_start'], '%Y-%m-%dT%H:%M:%SZ').strftime('%b %d %Y')
 
 							folder_name = f"{course_number} {start_date_time}"
 							folder_id = self.drive.check_folder(folder_name, parent_id)
-							# download file
-							# with open(filename, "wb") as f:
+							# download file with progress
+							# with open(file_name, "wb") as f:
 							# 	total_size = int(vid.headers.get('content-length'))
 							# 	for chunk in progress.bar(vid.iter_content(chunk_size=1024),
 							# 							  expected_size=total_size/1024 + 1):
@@ -320,12 +486,27 @@ class Zoom():
 							# 			f.write(chunk)
 							# 			f.flush()
 
-							logger.info(f"*** before uploading in meeting {meeting['id']}, topic {topic} created folder {folder_name} id: {folder_id} file {filename}")
-							self.drive.upload_file(filename, file_type, vid, folder_id)
-							# self.delete_downloaded_recording(f'/meetings/{meeting["id"]}/recordings/{recording["id"]}')
-				except Exception as E:
-					logger.warning(str(E))
+							logger.info(f"*** before uploading in meeting {meeting['id']}, topic {topic} created folder {folder_name} id: {folder_id} file {file_name}")
+							file_id = self.drive.upload_file(file_name, file_type, vid, folder_id)
+							# self.delete_recordings_after_download(f'/meetings/{meeting["id"]}/recordings/{recording["id"]}')
+					except Exception as E:
+						status = False
+						logger.warning(str(E))
 
+					if folder_id:
+						self.update_upload_history(meeting, file_name, file_type, folder_id, file_id, status)
+					else:
+						# for some reason topic was changed so cannot find out drive link
+						# notify admin it@miamiadschool.com about it
+						pass
+
+	def download_recordings(self):
+		logger.info('---- Download from zoom cloud recordings and upload them to Google Drive')
+		for meeting in self.meetings:
+			if self.validate_recordings_for_upload(meeting):
+				self.recording_data_to_insert = []
+				self._upload_recording(meeting)
+				self.update_db(meeting)
 
 	def create_recurring_zoom_meetings(self, account, start_date_time, end_date_time, duration, dow, class_name):
 		'''
