@@ -25,7 +25,7 @@ class Mas:
 		self.mydrive = GDrive()
 
 		# Slack
-		logger.info('--- Initialize Slack')
+		# logger.info('--- Initialize Slack')
 		# self.slack = Slack()
 
 		# Zoom
@@ -33,7 +33,7 @@ class Mas:
 		self.zoom = Zoom()
 
 		# Email
-		logger.info('--- Initialize Email')
+		# logger.info('--- Initialize Email')
 		# self.email = Email()
 
 	'''

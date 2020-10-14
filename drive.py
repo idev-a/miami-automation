@@ -116,23 +116,12 @@ class GDrive:
 
         return folder_id
 
-    def clear_old_recordings(self):
-        parent_id = '1dcI6AN_IidAT20BXXQYBv1Oxih0DKQFw'
-        query = f"'{parent_id}' in parents"
-        page_token = None
-        folder_id = None
-        pdb.set_trace()
-        while True:
-            response = self.drive_service.files().list(q=query,
-                      spaces='drive',
-                      fields='nextPageToken, files(id, name, trashed)',
-                      pageToken=page_token).execute()
-            for file in response.get('files', []):
-                pass
-         
-            page_token = response.get('nextPageToken', None)
-            if page_token is None:
-                break
+    def clear_old_recordings(self, recordings):
+        try:
+            for rec in recordings:
+                self.drive_service.files().delete(fileId=rec['file_id']).execute()
+        except Exception as E:
+            logger.warning(str(E))
 
     def upload_file(self, filename, file_type, vid, parent_id):
         total_size = int(vid.headers.get('content-length'))
@@ -156,7 +145,7 @@ class GDrive:
         body = { "name": filename, "parents": [parent_id], "mimetype": mimetype }
         res = self.drive_service.files().create(body=body, media_body=media, fields='id').execute()
 
-        logger.info(f'**** uploaded file {filename} parent {parent_id}')
+        logger.info(f'**** uploaded file {filename} in drive folder_id {parent_id}')
         return res.get('id')
        
     def create_drive_folder(self, name, parent_id, supportsAllDrives=True):
@@ -290,4 +279,3 @@ class GDrive:
 
 if __name__ == '__main__':
     g_drive = GDrive()
-    g_drive.clear_old_recordings()

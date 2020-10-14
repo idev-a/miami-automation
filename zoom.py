@@ -315,6 +315,7 @@ class Zoom():
 			'meeting_id': meeting['id'],
 			'start_time': start_time,
 			'file_name': _file_name,
+			'file_id': file_id,
 			'recording_link': recording_link,
 			'folder_link': folder_link,
 			'status': status,
@@ -339,7 +340,6 @@ class Zoom():
 			except Exception as E:
 				logger.warning(str(E))
 		
-		self.build_report_to_admin(meeting)
 
 	def build_report_to_admin(self, meeting):
 		status = self.get_meeting_status(meeting)
@@ -357,6 +357,8 @@ class Zoom():
 				msg += '\n It seems like that the topic was changed by host for some reason. Please have a look at the description for it in sheet and then correct it accordingly.'
 
 			self.emailSender.send_message(msg)
+
+			self.drive.clear_old_recordings(self.recording_data_to_insert)
 
 	def delete_uploaded_meeting(self, meeting):
 		logger.info(f'--- delete meeting after uploading {meeting["uuid"]}')
@@ -384,7 +386,6 @@ class Zoom():
 		folder_link = None
 		meeting_id = meeting['id']
 		meeting_uuid = meeting['uuid']
-		pdb.set_trace()
 		for recording in self.recording_data_to_insert:
 			folder_link = recording['folder_link']
 			start_time = recording['start_time']
@@ -394,7 +395,7 @@ class Zoom():
 		status = self.get_meeting_status(meeting)
 		try:
 			# check if this meeting has already inserted or should update
-			res = self.connection.execute(f"SELECT id FROM upload_status WHERE meeting_id='{meeting_id}'")
+			res = self.connection.execute(f"SELECT id FROM meeting_upload_status WHERE meeting_id='{meeting_id}'")
 			items = [dict(r) for r in res]
 			self.meeting_data_to_insert = []
 			if len(items):
@@ -508,6 +509,7 @@ class Zoom():
 				self.recording_data_to_insert = []
 				self._upload_recording(meeting)
 				self.update_db(meeting)
+				self.build_report_to_admin(meeting)
 
 	def create_recurring_zoom_meetings(self, account, start_date_time, end_date_time, duration, dow, class_name):
 		'''
