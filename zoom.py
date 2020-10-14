@@ -338,8 +338,8 @@ class Zoom():
 				self.update_upload_status(meeting, is_deleted)
 			except Exception as E:
 				logger.warning(str(E))
-		else:
-			self.build_report_to_admin(meeting)
+		
+		self.build_report_to_admin(meeting)
 
 	def build_report_to_admin(self, meeting):
 		status = self.get_meeting_status(meeting)
@@ -384,6 +384,7 @@ class Zoom():
 		folder_link = None
 		meeting_id = meeting['id']
 		meeting_uuid = meeting['uuid']
+		pdb.set_trace()
 		for recording in self.recording_data_to_insert:
 			folder_link = recording['folder_link']
 			start_time = recording['start_time']

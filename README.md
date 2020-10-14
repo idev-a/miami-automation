@@ -1,19 +1,23 @@
 # miami-scripts
 
-## create virtual env
-python -m venv venv
+## install python3-venv
+sudo apt-get update
+sudo apt-get install python3-venv
 
+## create virtual env
+python3 -m venv venv
+
+## activate venv
 source venv/bin/activate
 
 ## install packages
 pip install -r requirements.txt
 
 ##create dir
-mkdir /home/ubuntu/.config/
-mkdir /home/ubuntu/.config/gspread_pandas/
+mkdir /root/.config/ && mkdir /root/.config/gspread_pandas/
 
 ## copy google credential
-cp creds/google_secret.json /home/ubuntu/.config/gspread_pandas/
+cp creds/google_secret.json /root/.config/gspread_pandas/
 
 ## run as background
-nohup /home/ubuntu/miami-scripts/venv/bin/python /home/ubuntu/miami-scripts/mas.py &
+nohup /root/miami-scripts/venv/bin/python /root/miami-scripts/mas.py &
