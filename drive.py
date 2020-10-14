@@ -116,7 +116,8 @@ class GDrive:
 
         return folder_id
 
-    def clear_old_recordings(self, recordings):
+    def clear_old_recordings(self, meeting, recordings):
+        logger.info(f'--- clear old recordings for meeting {meeting["uuid"]} as not all of them uploaded correctly ')
         try:
             for rec in recordings:
                 self.drive_service.files().delete(fileId=rec['file_id']).execute()

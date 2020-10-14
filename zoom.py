@@ -352,13 +352,13 @@ class Zoom():
 			logger.info(f'--- report error to admin {meeting["uuid"]}')
 			# should notify admin about it.
 			msg = f'Failed to download meeting recordings for topic {meeting["topic"]} on {start_time} \n Here is the cloud link https://zoom.us/recording/management/detail?meeting_id={meeting["uuid"]}'
-			if folder_link.endswith('None'):
+			if folder_link and folder_link.endswith('None'):
 				# topic was changed, so cannot find out corresponding drive link in the sheet
 				msg += '\n It seems like that the topic was changed by host for some reason. Please have a look at the description for it in sheet and then correct it accordingly.'
 
 			self.emailSender.send_message(msg)
 
-			self.drive.clear_old_recordings(self.recording_data_to_insert)
+			self.drive.clear_old_recordings(meeting, self.recording_data_to_insert)
 
 	def delete_uploaded_meeting(self, meeting):
 		logger.info(f'--- delete meeting after uploading {meeting["uuid"]}')
@@ -367,7 +367,7 @@ class Zoom():
 		# should not delete meeting where any of recordings was not properly uploaded.
 		# focus on status
 		is_deleted = False
-		if status and len(self.recording_data_to_insert) == meeting['recording_count']-1:
+		if status:
 			try:
 				res = self.session.delete(f"{self.base_url}/meetings/{meeting['id']}/recordings?action=trash", headers=self.get_headers())
 				if res.status_code == 204:
@@ -395,7 +395,7 @@ class Zoom():
 		status = self.get_meeting_status(meeting)
 		try:
 			# check if this meeting has already inserted or should update
-			res = self.connection.execute(f"SELECT id FROM meeting_upload_status WHERE meeting_id='{meeting_id}'")
+			res = self.connection.execute(f"SELECT id FROM meeting_upload_status WHERE meeting_uuid='{meeting_uuid}'")
 			items = [dict(r) for r in res]
 			self.meeting_data_to_insert = []
 			if len(items):
