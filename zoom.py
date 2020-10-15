@@ -473,7 +473,7 @@ class Zoom():
 
 	def validate_recordings_for_upload(self, meeting):
 		# self.validate_size_of_meeting(meeting, 1024*10) and 
-		return not self.validate_size_of_meeting(meeting, 1024*2) and  not self.is_processing_meeting(meeting) and meeting['topic'].startswith('Q4')
+		return self.validate_size_of_meeting(meeting, 1024*10) and not self.validate_size_of_meeting(meeting, 1024*2) and  not self.is_processing_meeting(meeting) and meeting['topic'].startswith('Q4')
 
 	def _upload_recording(self, meeting):
 		topic = meeting['topic']
@@ -525,7 +525,6 @@ class Zoom():
 		logger.info('---- Download from zoom cloud recordings and upload them to Google Drive')
 		for meeting in self.meetings:
 			if self.validate_recordings_for_upload(meeting):
-				pdb.set_trace()
 				self.recording_data_to_insert = []
 				self._upload_recording(meeting)
 				self.build_report_to_admin(meeting)
