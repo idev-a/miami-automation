@@ -1,6 +1,0 @@
-2020-10-04 09:25:57,030:INFO:--- Initialize Spreadsheet [in mas.py:19]
-2020-10-04 09:25:57,032:DEBUG:Converted retries value: 3 -> Retry(total=3, connect=None, read=None, redirect=None, status=None) [in /mnt/g/work/lior/venv/lib/python3.6/site-packages/urllib3/util/retry.py:230]
-2020-10-04 09:25:57,034:DEBUG:Making request: POST https://oauth2.googleapis.com/token [in /mnt/g/work/lior/venv/lib/python3.6/site-packages/google/auth/transport/requests.py:181]
-2020-10-04 09:25:57,036:DEBUG:Starting new HTTPS connection (1): oauth2.googleapis.com:443 [in /mnt/g/work/lior/venv/lib/python3.6/site-packages/urllib3/connectionpool.py:943]
-2020-10-04 09:26:01,144:DEBUG:https://oauth2.googleapis.com:443 "POST /token HTTP/1.1" 200 None [in /mnt/g/work/lior/venv/lib/python3.6/site-packages/urllib3/connectionpool.py:442]
-2020-10-04 09:26:01,154:DEBUG:Starting new HTTPS connection (1): www.googleapis.com:443 [in /mnt/g/work/lior/venv/lib/python3.6/site-packages/urllib3/connectionpool.py:943]
