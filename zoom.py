@@ -369,7 +369,7 @@ class Zoom():
 		if self.recording_data_to_insert and not status:
 			logger.info(f'--- report error to admin {meeting["uuid"]}')
 			# should notify admin about it.
-			msg = f'Failed to download meeting recordings for topic {meeting["topic"]} on {start_time} \n Here is the cloud link https://zoom.us/recording/management/detail?meeting_id={meeting["uuid"]}'
+			msg = f'Failed to download meeting recordings for topic {meeting["topic"]} on {start_time} \n Here is the cloud link https://zoom.us/recording/management/detail?meeting_id={self.double_urlencode(meeting["uuid"])}'
 			if folder_link and folder_link.endswith('None'):
 				# topic was changed, so cannot find out corresponding drive link in the sheet
 				msg += '\n It seems like that the topic was changed by host for some reason. Please have a look at the description for it in sheet and then correct it accordingly.'
@@ -483,7 +483,6 @@ class Zoom():
 		folder_id = None
 		file_id = None
 		status = True
-		pdb.set_trace()
 
 		for recording in meeting['recording_files']:
 			# if recording.get('file_size', 0) < 1024*1024*2:
@@ -526,10 +525,11 @@ class Zoom():
 		logger.info('---- Download from zoom cloud recordings and upload them to Google Drive')
 		for meeting in self.meetings:
 			if self.validate_recordings_for_upload(meeting):
+				pdb.set_trace()
 				self.recording_data_to_insert = []
 				self._upload_recording(meeting)
-				self.update_db(meeting)
 				self.build_report_to_admin(meeting)
+				self.update_db(meeting)
 
 	def create_recurring_zoom_meetings(self, account, start_date_time, end_date_time, duration, dow, class_name):
 		'''
