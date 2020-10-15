@@ -10,6 +10,7 @@ from clint.textui import progress
 from datetime import datetime, timedelta
 import jwt
 import argparse
+from urllib.parse import urlencode
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, Table, Column, Text, BLOB, \
 					Integer, Text, String, MetaData, DateTime, JSON, select, Boolean
@@ -277,6 +278,24 @@ class Zoom():
 
 		return sub_meetings
 
+	def double_urlencode(self, text):
+		"""double URL-encode a given 'text'.  Do not return the 'variablename=' portion."""
+
+		text = self.single_urlencode(text)
+		text = self.single_urlencode(text)
+
+		return text
+
+	def single_urlencode(self, text):
+		"""single URL-encode a given 'text'.  Do not return the 'variablename=' portion."""
+
+		blah = urlencode({'blahblahblah':text})
+
+		#we know the length of the 'blahblahblah=' is equal to 13.  This lets us avoid any messy string matches
+		blah = blah[13:]
+
+		return blah
+
 	def clean_tiny_recordings(self):
 		self.list_all_recordings()
 
@@ -294,7 +313,7 @@ class Zoom():
 			# 	print('h===========', meeting['id'])
 			if not self.validate_size_of_meeting(meeting, self.size_limit) and not self.is_processing_meeting(meeting):
 				try:
-					res = self.session.delete(f"{self.base_url}/meetings/{meeting['id']}/recordings?action=trash", headers=self.get_headers())
+					res = self.session.delete(f"{self.base_url}/meetings/{self.double_urlencode(meeting['uuid'])}/recordings?action=trash", headers=self.get_headers())
 					if res.status_code == 204:
 						logger.info(f'*** clear meeting ID: {meeting["start_time"]}, Topic: {meeting["topic"]}')
 						total_cleared += 1
@@ -339,7 +358,6 @@ class Zoom():
 				self.update_upload_status(meeting, is_deleted)
 			except Exception as E:
 				logger.warning(str(E))
-		
 
 	def build_report_to_admin(self, meeting):
 		status = self.get_meeting_status(meeting)
@@ -348,7 +366,7 @@ class Zoom():
 		for recording in self.recording_data_to_insert:
 			folder_link = recording['folder_link']
 			start_time = recording['start_time']
-		if not status:
+		if self.recording_data_to_insert and not status:
 			logger.info(f'--- report error to admin {meeting["uuid"]}')
 			# should notify admin about it.
 			msg = f'Failed to download meeting recordings for topic {meeting["topic"]} on {start_time} \n Here is the cloud link https://zoom.us/recording/management/detail?meeting_id={meeting["uuid"]}'
@@ -369,7 +387,7 @@ class Zoom():
 		is_deleted = False
 		if status:
 			try:
-				res = self.session.delete(f"{self.base_url}/meetings/{meeting['id']}/recordings?action=trash", headers=self.get_headers())
+				res = self.session.delete(f"{self.base_url}/meetings/{self.double_urlencode(meeting['uuid'])}/recordings?action=trash", headers=self.get_headers())
 				if res.status_code == 204:
 					is_deleted = True
 			except Exception as E:
@@ -455,7 +473,7 @@ class Zoom():
 
 	def validate_recordings_for_upload(self, meeting):
 		# self.validate_size_of_meeting(meeting, 1024*10) and 
-		return self.validate_size_of_meeting(meeting, 1024*10) and not self.is_processing_meeting(meeting) and meeting['topic'].startswith('Q4')
+		return not self.validate_size_of_meeting(meeting, 1024*2) and  not self.is_processing_meeting(meeting) and meeting['topic'].startswith('Q4')
 
 	def _upload_recording(self, meeting):
 		topic = meeting['topic']
@@ -465,8 +483,10 @@ class Zoom():
 		folder_id = None
 		file_id = None
 		status = True
+		pdb.set_trace()
+
 		for recording in meeting['recording_files']:
-			# if recording.get('file_size', 0) < 1024*1024*11 or True:
+			# if recording.get('file_size', 0) < 1024*1024*2:
 				vid = self.session.get(f"{recording['download_url']}?access_token={self.token.decode()}", stream=True)
 				if vid.status_code == 200 and recording.get('recording_type') != None and recording.get('status', '') != 'processing':
 					try:
