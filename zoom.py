@@ -238,6 +238,9 @@ class Zoom():
 				folder_id = os.path.basename(folder_link)
 				break
 
+		if folder_id and '?' in folder_id:
+			folder_id = folder_id.split('?')[0]
+
 		return folder_id
 
 	def get_headers(self):
@@ -461,7 +464,7 @@ class Zoom():
 			for recording in meeting['recording_files']:
 				total_size += recording.get('file_size', 0)
 
-			return total_size >= size*1024*1024  and total_size < 200*1024*1024
+			return total_size >= size*1024*1024 # and total_size < 200*1024*1024
 		except Exception as E:
 			logger.warning(str(E))
 

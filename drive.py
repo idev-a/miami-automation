@@ -105,13 +105,8 @@ class GDrive:
                 break
 
         if not folder_id:
-            file_metadata = {
-                'name': folder_name,
-                "parents": [parent_id],
-                'mimeType': 'application/vnd.google-apps.folder'
-            }
-            file = self.drive_service.files().create(body=file_metadata,
-                                    fields='id').execute()
+            file_metadata = {'name': folder_name,"parents": [parent_id],'mimeType': 'application/vnd.google-apps.folder'}
+            file = self.drive_service.files().create(body=file_metadata,fields='id').execute()
             folder_id = file.get('id')
 
         return folder_id
@@ -147,7 +142,7 @@ class GDrive:
             media = MediaIoBaseUpload(temporary_file, mimetype, resumable=True, chunksize=chunk_size)
             body = { "name": filename, "parents": [parent_id], "mimetype": mimetype }
             res = self.drive_service.files().create(body=body, media_body=media, fields='id').execute()
-            os.remove(temp_filename)
+            os.remove(temporary_file_name)
             file_id = res.get('id')
 
             logger.info(f'**** uploaded file {filename} in drive folder_id {parent_id}')
