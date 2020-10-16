@@ -456,7 +456,7 @@ class Zoom():
 			for recording in meeting['recording_files']:
 				total_size += recording.get('file_size', 0)
 
-			return total_size >= size*1024
+			return total_size >= size*1024 and total_size < 3*1024*1024
 		except Exception as E:
 			logger.warning(str(E))
 
@@ -464,7 +464,7 @@ class Zoom():
 		is_processing = False
 		try:
 			for recording in meeting['recording_files']:
-				if recording.get('status', '') == 'processing':
+				if recording.get('recording_type') != None and recording.get('status', '') != 'completed':
 					is_processing = True
 
 			return is_processing
@@ -485,9 +485,9 @@ class Zoom():
 		status = True
 
 		for recording in meeting['recording_files']:
-			# if recording.get('file_size', 0) < 1024*1024*2:
+			if recording.get('recording_type') != None and recording.get('status', '') != 'processing':
 				vid = self.session.get(f"{recording['download_url']}?access_token={self.token.decode()}", stream=True)
-				if vid.status_code == 200 and recording.get('recording_type') != None and recording.get('status', '') != 'processing':
+				if vid.status_code == 200:
 					try:
 						recording_type = ' '.join([d.capitalize() for d in recording['recording_type'].split('_')])
 						file_type = recording["file_type"]
