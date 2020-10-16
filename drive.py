@@ -124,8 +124,9 @@ class GDrive:
         except Exception as E:
             logger.warning(str(E))
 
-    def upload_file(self, filename, file_type, vid, parent_id):
+    def upload_file(self, temporary_file_name, filename, file_type, vid, parent_id):
         total_size = int(vid.headers.get('content-length'))
+        file_id = None
         mimetype = ""
         if file_type == 'MP4':
             mimetype = "video/mp4"
@@ -140,14 +141,18 @@ class GDrive:
             filename = f'{filename}.vtt'
             mimetype = 'text/vtt'
 
-        chunk_size = 1024*1024
-        file_bytes = BytesIO(vid.content)
-        media = MediaIoBaseUpload(file_bytes, mimetype, resumable=True, chunksize=chunk_size)
-        body = { "name": filename, "parents": [parent_id], "mimetype": mimetype }
-        res = self.drive_service.files().create(body=body, media_body=media, fields='id').execute()
+        with open(temporary_file_name, 'rb') as temporary_file:
+            chunk_size = 1024*1024
+            # file_bytes = BytesIO(vid.content)
+            media = MediaIoBaseUpload(temporary_file, mimetype, resumable=True, chunksize=chunk_size)
+            body = { "name": filename, "parents": [parent_id], "mimetype": mimetype }
+            res = self.drive_service.files().create(body=body, media_body=media, fields='id').execute()
+            os.remove(temp_filename)
+            file_id = res.get('id')
 
-        logger.info(f'**** uploaded file {filename} in drive folder_id {parent_id}')
-        return res.get('id')
+            logger.info(f'**** uploaded file {filename} in drive folder_id {parent_id}')
+            
+        return file_id
        
     def create_drive_folder(self, name, parent_id, supportsAllDrives=True):
         try:

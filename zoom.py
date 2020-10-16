@@ -9,6 +9,7 @@ import string
 from clint.textui import progress
 from datetime import datetime, timedelta
 import jwt
+from uuid import uuid1
 import argparse
 from urllib.parse import urlencode
 from dotenv import load_dotenv
@@ -342,8 +343,12 @@ class Zoom():
 		})
 
 	def get_meeting_status(self, meeting):
+		cnt = 0
+		for recording in meeting['recording_files']:
+			if recording.get('status') == 'completed':
+				cnt += 1
 		status = False
-		if len(self.recording_data_to_insert) == meeting['recording_count']-1:
+		if len(self.recording_data_to_insert) == cnt:
 			status = True
 		else:
 			status = False
@@ -418,7 +423,7 @@ class Zoom():
 			self.meeting_data_to_insert = []
 			if len(items):
 				update_statement = self.upload_status.update().\
-					where(self.upload_status.c.uuid == meeting_uuid).\
+					where(self.upload_status.c.meeting_uuid == meeting_uuid).\
 					values({
 						'topic': topic,
 						'is_deleted': is_deleted,
@@ -456,7 +461,7 @@ class Zoom():
 			for recording in meeting['recording_files']:
 				total_size += recording.get('file_size', 0)
 
-			return total_size >= size*1024*1024 and total_size < 3*1024*1024*1024
+			return total_size >= size*1024*1024  and total_size < 200*1024*1024
 		except Exception as E:
 			logger.warning(str(E))
 
@@ -474,6 +479,15 @@ class Zoom():
 	def validate_recordings_for_upload(self, meeting):
 		# self.validate_size_of_meeting(meeting, 1024*10) and 
 		return self.validate_size_of_meeting(meeting, 10) and not self.is_processing_meeting(meeting) and meeting['topic'].startswith('Q4')
+
+	def download_to_tempfile(self, temp_filename, vid):
+		with open(temp_filename, "wb") as f:
+			total_size = int(vid.headers.get('content-length'))
+			for chunk in progress.bar(vid.iter_content(chunk_size=1024),
+									  expected_size=total_size/1024 + 1):
+				if chunk:
+					f.write(chunk)
+					f.flush()
 
 	def _upload_recording(self, meeting):
 		topic = meeting['topic']
@@ -499,16 +513,15 @@ class Zoom():
 							folder_name = f"{course_number} {start_date_time}"
 							folder_id = self.drive.check_folder(folder_name, parent_id)
 							# download file with progress
-							# with open(file_name, "wb") as f:
-							# 	total_size = int(vid.headers.get('content-length'))
-							# 	for chunk in progress.bar(vid.iter_content(chunk_size=1024),
-							# 							  expected_size=total_size/1024 + 1):
-							# 		if chunk:
-							# 			f.write(chunk)
-							# 			f.flush()
+							temporary_file_name = f'/tmp/miami_{uuid1()}'
+							logger.info(f'=== download file temp')
+
+							self.download_to_tempfile(temporary_file_name, vid)
 
 							logger.info(f"*** before uploading in meeting {meeting['id']}, topic {topic} created folder {folder_name} id: {folder_id} file {file_name}")
-							file_id = self.drive.upload_file(file_name, file_type, vid, folder_id)
+							file_id = self.drive.upload_file(temporary_file_name, file_name, file_type, vid, folder_id)
+							if not file_id:
+								status = False
 							# self.delete_recordings_after_download(f'/meetings/{meeting["id"]}/recordings/{recording["id"]}')
 					except Exception as E:
 						status = False
