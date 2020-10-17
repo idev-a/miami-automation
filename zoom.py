@@ -606,5 +606,5 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-s', '--size', type=int, required=True, help="size of trash file in MB to delete")
 
-	zoom.size_limit = parser.parse_args().size * 1024
+	zoom.size_limit = parser.parse_args().size
 	zoom.clean_tiny_recordings()
