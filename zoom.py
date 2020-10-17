@@ -548,7 +548,6 @@ class Zoom():
 		logger.info('---- Download from zoom cloud recordings and upload them to Google Drive')
 		for meeting in self.meetings:
 			if self.validate_recordings_for_upload(meeting):
-				pdb.set_trace()
 				self.recording_data_to_insert = []
 				self._upload_recording(meeting)
 				self.build_report_to_admin(meeting)
