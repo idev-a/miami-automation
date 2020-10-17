@@ -234,7 +234,7 @@ class Zoom():
 	def find_drive_folder_id(self, cur_topic):
 		folder_id = None
 		for folder_link, topic in zip(self.ccs['Google Drive: Recordings'], self.ccs['Zoom Topic']):
-			if topic.strip() == cur_topic.strip():
+			if topic.strip() in cur_topic.strip():
 				folder_id = os.path.basename(folder_link)
 				break
 
@@ -500,6 +500,7 @@ class Zoom():
 		folder_id = None
 		file_id = None
 		status = True
+		parent_id = None
 
 		for recording in meeting['recording_files']:
 			if recording.get('recording_type') != None and recording.get('status', '') != 'processing':
@@ -526,6 +527,8 @@ class Zoom():
 							if not file_id:
 								status = False
 							# self.delete_recordings_after_download(f'/meetings/{meeting["id"]}/recordings/{recording["id"]}')
+						else:
+							logger.warning(f'**** cannot findout parent_id in sheet for topic {topic}')
 					except Exception as E:
 						status = False
 						logger.warning(str(E))
@@ -537,10 +540,15 @@ class Zoom():
 						# notify admin it@miamiadschool.com about it
 						pass
 
+		if not parent_id:
+			msg = f'cannot findout topic in the sheet for {meeting["topic"]}.'
+			self.emailSender.send_message(msg)
+
 	def download_recordings(self):
 		logger.info('---- Download from zoom cloud recordings and upload them to Google Drive')
 		for meeting in self.meetings:
 			if self.validate_recordings_for_upload(meeting):
+				pdb.set_trace()
 				self.recording_data_to_insert = []
 				self._upload_recording(meeting)
 				self.build_report_to_admin(meeting)
