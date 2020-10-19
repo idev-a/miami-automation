@@ -540,7 +540,7 @@ class Zoom():
 						# notify admin it@miamiadschool.com about it
 						pass
 
-		if not parent_id:
+		if folder_id and not parent_id:
 			msg = f'cannot findout topic in the sheet for {meeting["topic"]}.'
 			self.emailSender.send_message(msg)
 
