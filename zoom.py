@@ -231,10 +231,13 @@ class Zoom():
 			index += 1
 			break
 
+	def _topic(self, topic):
+		return ' '.join(topic.lower().strip().split('-'))
+
 	def find_drive_folder_id(self, cur_topic):
 		folder_id = None
 		for folder_link, topic in zip(self.ccs['Google Drive: Recordings'], self.ccs['Zoom Topic']):
-			if topic.strip() in cur_topic.strip():
+			if self._topic(topic) in self._topic(cur_topic):
 				folder_id = os.path.basename(folder_link)
 				break
 
@@ -480,8 +483,8 @@ class Zoom():
 			logger.warning(str(E))
 
 	def validate_recordings_for_upload(self, meeting):
-		# self.validate_size_of_meeting(meeting, 1024*10) and 
-		return self.validate_size_of_meeting(meeting, 10) and not self.is_processing_meeting(meeting) and meeting['topic'].startswith('Q4')
+		# 
+		return self.validate_size_of_meeting(meeting, 10) and not self.is_processing_meeting(meeting) and meeting['topic'].lower().startswith('q4')
 
 	def download_to_tempfile(self, temp_filename, vid):
 		with open(temp_filename, "wb") as f:
@@ -528,7 +531,9 @@ class Zoom():
 								status = False
 							# self.delete_recordings_after_download(f'/meetings/{meeting["id"]}/recordings/{recording["id"]}')
 						else:
-							logger.warning(f'**** cannot findout parent_id in sheet for topic {topic}')
+							msg = f'**** cannot findout parent_id in sheet for topic {topic}'
+							logger.warning(msg)
+							self.emailSender.send_message(msg)
 					except Exception as E:
 						status = False
 						logger.warning(str(E))
