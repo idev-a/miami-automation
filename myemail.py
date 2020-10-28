@@ -5,6 +5,7 @@ import base64
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import pdb
+import os
 
 EMAIL_FROM = "it@miamiadschool.com"
 EMAIL_TO = "it@miamiadschool.com"
@@ -15,7 +16,9 @@ class Email:
 
 	def __init__(self):
 		SCOPES = ['https://www.googleapis.com/auth/gmail.send']
-		SERVICE_ACCOUNT_FILE = './creds/google_secret.json'
+		# BASE_PATH = os.path.abspath(os.curdir)
+		BASE_PATH = '/root/miami-scripts'
+		SERVICE_ACCOUNT_FILE = f'{BASE_PATH}/creds/google_secret.json'
 
 		credentials = service_account.Credentials.from_service_account_file(
 			SERVICE_ACCOUNT_FILE,
