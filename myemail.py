@@ -16,8 +16,8 @@ class Email:
 
 	def __init__(self):
 		SCOPES = ['https://www.googleapis.com/auth/gmail.send']
-		# BASE_PATH = os.path.abspath(os.curdir)
-		BASE_PATH = '/root/miami-scripts'
+		BASE_PATH = os.path.abspath(os.curdir)
+		# BASE_PATH = '/root/miami-scripts'
 		SERVICE_ACCOUNT_FILE = f'{BASE_PATH}/creds/google_secret.json'
 
 		credentials = service_account.Credentials.from_service_account_file(

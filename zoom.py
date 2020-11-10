@@ -65,14 +65,17 @@ class Zoom():
 			Column('id', Integer, primary_key=True),
 			Column('topic', String(512)),
 			Column('meeting_id', String(512)),
+			Column('recording_id', String(512)),
 			Column('meeting_uuid', String(512)),
 			# Column('meeting_link', String(512)),
 			Column('start_time', String(512)),
 			Column('file_name', String(512)),
-			# Column('file_type', String(128)),
+			Column('file_size', Integer),
+			Column('cnt_files', Integer),
 			Column('recording_link', String(512)),
 			Column('folder_link', String(512)),
-			Column('status', Boolean),
+			Column('status', String(256)),
+			Column('message', Text),
 			Column('run_at', String(256)),
 		)
 
@@ -148,11 +151,15 @@ class Zoom():
 
 		self.list_all_recordings()
 
+		self.save_recordings()
+
 		self.download_recordings()
 
 		# self.read_all_zoom_users()
 
 		# self.read_zoom_info_create_meetings()
+
+		self.connection.close()
 
 		return self.ccs
 
@@ -252,6 +259,52 @@ class Zoom():
 			'content-type': "application/json"
 		}
 
+	def save_recordings(self):
+		insert_data = []
+		delete_data = []
+		for meeting in self.meetings:
+			topic = meeting['topic']
+			start_time = datetime.strptime(meeting['start_time'], '%Y-%m-%dT%H:%M:%SZ').strftime('%b %d %Y, %H:%M:%S')
+			for recording in meeting['recording_files']:
+				if recording.get('recording_type') != None:
+					recording_type = ' '.join([d.capitalize() for d in recording['recording_type'].split('_')])
+					file_type = recording["file_type"]
+					file_name = f'{topic} {recording_type}.{file_type}'
+					insert_data.append({
+						'topic': topic,
+						'meeting_id': meeting['id'],
+						'recording_id': recording['id'],
+						'start_time': start_time,
+						'file_name': file_name,
+						'file_size': recording['file_size'],
+						'status': 'waiting',
+						'cnt_files': meeting['recording_count']-1,
+						'run_at': datetime.now().strftime('%m/%d/%Y %H:%M:%S')
+					})
+
+					delete_data.append(recording['id'])
+
+		if delete_data:
+			delete_query = 'DELETE FROM recording_upload_history WHERE'
+			for _id in delete_data:
+				delete_query += f' recording_id="{_id}" AND'
+
+			delete_query = delete_query[:-3]
+			print(delete_query)
+			self.connection.execute(delete_query)
+
+		if insert_data:
+			self.connection.execute(self.upload_history.insert(), insert_data)
+
+	def update_recording(self, recording_id, status, message=None, run_at=datetime.now().strftime('%m/%d/%Y %H:%M:%S')):
+		query = "UPDATE `recording_upload_history` SET `status`=%s, `message`=%s, `run_at`=%s WHERE `recording_id`=%s"
+		self.connection.execute(query, (status, message, run_at, recording_id))
+
+	def update_recording1(self, data):
+		update_statement = self.upload_history.update().where(self.upload_history.c.recording_id == data['recording_id']).values(data)
+
+		self.connection.execute(update_statement)
+
 	def list_all_recordings(self):
 		logger.info('--- list all recordings')
 		self.meetings = []
@@ -263,12 +316,14 @@ class Zoom():
 			if len(sub_meetings) == 0:
 				break
 			else:
-				self.meetings += sub_meetings
+				self.meetings += [meeting for meeting in sub_meetings if self.validate_for_listing(meeting) ]
 				to_date = datetime.now() - timedelta(days=delta)
 				delta += 30
 				from_date = datetime.now() - timedelta(days=delta)
 
 		print(len(self.meetings))
+
+		return self.meetings
 
 	def _list_recordings(self, from_date, to_date):
 		sub_meetings = []
@@ -308,6 +363,8 @@ class Zoom():
 
 		self.clear_recordings()
 
+		self.connection.close()
+
 	def clear_recordings(self):
 		'''
 			Clear recording whose size is under input limit size. normally kb file
@@ -329,24 +386,18 @@ class Zoom():
 
 		logger.info(f'--- Successfully cleared recordings {total_cleared}')		
 
-	def update_upload_history(self, meeting, file_name, file_type, folder_id, file_id, status=True):
-		_file_name = None
-		if file_name and file_type:
-			_file_name = f'{file_name}.{file_type}'
-		start_time = datetime.strptime(meeting['start_time'], '%Y-%m-%dT%H:%M:%SZ').strftime('%b %d %Y, %H:%M:%S')
+	def update_upload_history(self, meeting, recording_id, file_name, file_type, folder_id, file_id, status=True):
 		recording_link = f'https://drive.google.com/file/d/{file_id}/view?usp=sharing'
 		folder_link = f'https://drive.google.com/drive/folders/{folder_id}'
-		self.recording_data_to_insert.append({
-			'topic': meeting['topic'],
+		update_data = {
 			'meeting_id': meeting['id'],
-			'start_time': start_time,
-			'file_name': _file_name,
-			'file_id': file_id,
+			'recording_id': recording_id,
+			'status': 'completed',
 			'recording_link': recording_link,
 			'folder_link': folder_link,
-			'status': status,
 			'run_at': datetime.now().strftime('%m/%d/%Y %H:%M:%S')
-		})
+		}
+		self.update_recording1(update_data)
 
 	def get_meeting_status(self, meeting):
 		cnt = 0
@@ -467,7 +518,7 @@ class Zoom():
 			for recording in meeting['recording_files']:
 				total_size += recording.get('file_size', 0)
 
-			return total_size >= size*1024*1024 # and total_size < 200*1024*1024
+			return total_size >= size*1024*1024 # and total_size <= 10*1024*1024 # and total_size < 200*1024*1024
 		except Exception as E:
 			logger.warning(str(E))
 
@@ -481,6 +532,9 @@ class Zoom():
 			return is_processing
 		except Exception as E:
 			logger.warning(str(E))
+
+	def validate_for_listing(self, meeting):
+		return self.validate_size_of_meeting(meeting, 10) and meeting['topic'].lower().startswith('q4')
 
 	def validate_recordings_for_upload(self, meeting):
 		# 
@@ -503,6 +557,7 @@ class Zoom():
 		folder_id = None
 		file_id = None
 		status = True
+		message = ''
 		parent_id = None
 
 		for recording in meeting['recording_files']:
@@ -526,28 +581,41 @@ class Zoom():
 							self.download_to_tempfile(temporary_file_name, vid)
 
 							logger.info(f"*** before uploading in meeting {meeting['id']}, topic {topic} created folder {folder_name} id: {folder_id} file {file_name}")
+							self.update_recording(recording['id'], 'uploading')
+							file_id = None
 							file_id = self.drive.upload_file(temporary_file_name, file_name, file_type, vid, folder_id)
 							if not file_id:
-								status = False
+								status = 'error'
+								message = 'Error happened while uploading recordings to Google Drive'
+								self.update_recording(recording['id'], 'error', message)
 							# self.delete_recordings_after_download(f'/meetings/{meeting["id"]}/recordings/{recording["id"]}')
 						else:
-							msg = f'**** cannot findout parent_id in sheet for topic {topic}'
-							logger.warning(msg)
-							self.emailSender.send_message(msg)
+							message = f'**** Cannot find out Google Drive link in CampusCafe Course Schedule Google Sheet for topic {topic}'
+							logger.warning(message)
+							self.emailSender.send_message(message)
+							self.update_recording(recording['id'], 'error', message)
 					except Exception as E:
-						status = False
-						logger.warning(str(E))
+						status = 'error'
+						message = str(E)
+						logger.warning(message)
+						self.update_recording(recording['id'], 'error', message)
 
 					if folder_id:
-						self.update_upload_history(meeting, file_name, file_type, folder_id, file_id, status)
+						self.update_upload_history(meeting, recording['id'], file_name, file_type, folder_id, file_id, status)
 					else:
 						# for some reason topic was changed so cannot find out drive link
 						# notify admin it@miamiadschool.com about it
 						pass
 
-		if folder_id and not parent_id:
-			msg = f'cannot findout topic in the sheet for {meeting["topic"]}.'
-			self.emailSender.send_message(msg)
+		# if folder_id and not parent_id:
+		# 	message = f'cannot findout topic in the sheet for {meeting["topic"]}.'
+		# 	self.emailSender.send_message(message)
+		# 	update_data = {
+		# 		'status': 'error',
+		# 		'message': message,
+		# 		'run_at': datetime.now().strftime('%m/%d/%Y %H:%M:%S')
+		# 	}
+		# 	self.update_recording(update_data)
 
 	def download_recordings(self):
 		logger.info('---- Download from zoom cloud recordings and upload them to Google Drive')

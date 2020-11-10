@@ -66,8 +66,8 @@ class GDrive:
 
     def __init__(self):
         # OAuth2 using service key
-        # BASE_PATH = os.path.abspath(os.curdir)
-        BASE_PATH = '/root/miami-scripts'
+        BASE_PATH = os.path.abspath(os.curdir)
+        # BASE_PATH = '/root/miami-scripts'
         self.credentials = service_account.Credentials.from_service_account_file(
             f'{BASE_PATH}/creds/google_secret.json',
             scopes=G_DRIVE_SCOPES,
